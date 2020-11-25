@@ -33,10 +33,10 @@ public class ClientCommunicator {
 
         public void handOff(FishModel fish, TankModel tankModel) {
             if (fish.getDirection() == Direction.RIGHT) {
-                endpoint.send(tankModel.getNeighborRight(), new HandoffRequest(fish));
+                endpoint.send(tankModel.getRightNeighbor(), new HandoffRequest(fish));
 
             } else if (fish.getDirection() == Direction.LEFT) {
-                endpoint.send(tankModel.getNeighborLeft(), new HandoffRequest(fish));
+                endpoint.send(tankModel.getLeftNeighbor(), new HandoffRequest(fish));
             }
         }
 
@@ -50,6 +50,10 @@ public class ClientCommunicator {
 
         public void sendSnapshotCollector(InetSocketAddress neighbor, SnapshotCollector collector) {
             endpoint.send(neighbor, collector);
+        }
+
+        public void sendLocationRequest(InetSocketAddress neighbor, String fishId) {
+            endpoint.send(neighbor, new LocationRequest(fishId));
         }
 
     }
@@ -79,8 +83,8 @@ public class ClientCommunicator {
                 }
 
                 if (msg.getPayload() instanceof NeighborUpdate) {
-                    tankModel.setNeighborLeft(((NeighborUpdate) msg.getPayload()).getFishL());
-                    tankModel.setNeighborRight(((NeighborUpdate) msg.getPayload()).getFishR());
+                    tankModel.setLeftNeighbor(((NeighborUpdate) msg.getPayload()).getFishL());
+                    tankModel.setRightNeighbor(((NeighborUpdate) msg.getPayload()).getFishR());
                 }
 
                 if (msg.getPayload() instanceof SnapshotMarker) {
@@ -89,6 +93,10 @@ public class ClientCommunicator {
 
                 if (msg.getPayload() instanceof SnapshotCollector) {
                     tankModel.receiveCollector((SnapshotCollector) msg.getPayload());
+                }
+
+                if (msg.getPayload() instanceof  LocationRequest) {
+                    tankModel.locateFishGlobally((((LocationRequest) msg.getPayload()).fishId));
                 }
 
             }

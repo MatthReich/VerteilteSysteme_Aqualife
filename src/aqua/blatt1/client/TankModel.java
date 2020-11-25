@@ -11,6 +11,8 @@ import java.util.concurrent.TimeUnit;
 
 enum RecordingModeValues {IDLE, LEFT, RIGHT, BOTH}
 
+enum ReferenceStates {HERE, LEFT, RIGHT}
+
 public class TankModel extends Observable implements Iterable<FishModel> {
 
     public static final int WIDTH = 600;
@@ -21,39 +23,41 @@ public class TankModel extends Observable implements Iterable<FishModel> {
     protected final Set<FishModel> fishies;
     protected int fishCounter = 0;
     protected final ClientCommunicator.ClientForwarder forwarder;
-    private InetSocketAddress neighborLeft;
-    private InetSocketAddress neighborRight;
+    private InetSocketAddress leftNeighbor;
+    private InetSocketAddress rightNeighbor;
     private boolean hasToken;
     private final Timer timer = new Timer();
     private RecordingModeValues recordingMode = RecordingModeValues.IDLE;
     private boolean initiator = Boolean.FALSE;
     private int sumFishies = 0;
     private int recievingFishies = 0;
+    private Map<FishModel, ReferenceStates> referenceFishies;
 
     private int snapshot = 0;
 
     private boolean capture = Boolean.FALSE;
 
-    public InetSocketAddress getNeighborLeft() {
-        return neighborLeft;
+    public InetSocketAddress getLeftNeighbor() {
+        return leftNeighbor;
     }
 
-    public void setNeighborLeft(InetSocketAddress neighborLeft) {
-        this.neighborLeft = neighborLeft;
+    public void setLeftNeighbor(InetSocketAddress leftNeighbor) {
+        this.leftNeighbor = leftNeighbor;
     }
 
-    public InetSocketAddress getNeighborRight() {
-        return neighborRight;
+    public InetSocketAddress getRightNeighbor() {
+        return rightNeighbor;
     }
 
-    public void setNeighborRight(InetSocketAddress neighborRight) {
-        this.neighborRight = neighborRight;
+    public void setRightNeighbor(InetSocketAddress rightNeighbor) {
+        this.rightNeighbor = rightNeighbor;
     }
 
 
     public TankModel(ClientCommunicator.ClientForwarder forwarder) {
         this.fishies = Collections.newSetFromMap(new ConcurrentHashMap<FishModel, Boolean>());
         this.forwarder = forwarder;
+        this.referenceFishies = new HashMap<>();
     }
 
     synchronized void onRegistration(String id) {
@@ -70,12 +74,14 @@ public class TankModel extends Observable implements Iterable<FishModel> {
                     rand.nextBoolean() ? Direction.LEFT : Direction.RIGHT);
 
             fishies.add(fish);
+            referenceFishies.put(fish, ReferenceStates.HERE);
         }
     }
 
     synchronized void receiveFish(FishModel fish) {
         fish.setToStart();
         fishies.add(fish);
+        referenceFishies.put(fish, ReferenceStates.HERE);
 
         switch (recordingMode) {
             case IDLE:
@@ -136,6 +142,7 @@ public class TankModel extends Observable implements Iterable<FishModel> {
                             break;
                     }
                     forwarder.handOff(fish, this);
+                    referenceFishies.put(fish, fish.getDirection() == Direction.LEFT ? ReferenceStates.LEFT : ReferenceStates.RIGHT);
                 }
             }
 
@@ -159,7 +166,6 @@ public class TankModel extends Observable implements Iterable<FishModel> {
                 TimeUnit.MILLISECONDS.sleep(10);
             }
         } catch (InterruptedException consumed) {
-            // allow method to terminate
             Thread.currentThread().interrupt();
         }
     }
@@ -170,7 +176,7 @@ public class TankModel extends Observable implements Iterable<FishModel> {
             @Override
             public void run() {
                 hasToken = Boolean.FALSE;
-                forwarder.sendToken(neighborLeft);
+                forwarder.sendToken(leftNeighbor);
             }
         }, 2000);
     }
@@ -192,29 +198,29 @@ public class TankModel extends Observable implements Iterable<FishModel> {
             if (socketAddress == null) {
                 initiator = Boolean.TRUE;
                 recordingMode = RecordingModeValues.BOTH;
-            } else if (socketAddress.equals(neighborLeft)) {
+            } else if (socketAddress.equals(leftNeighbor)) {
                 recordingMode = RecordingModeValues.RIGHT;
-            } else if (socketAddress.equals(neighborRight)) {
+            } else if (socketAddress.equals(rightNeighbor)) {
                 recordingMode = RecordingModeValues.LEFT;
             }
             sumFishies = 0;
             recievingFishies = 0;
             localSnapshot();
-            forwarder.sendSnapshotMarker(neighborLeft);
-            forwarder.sendSnapshotMarker(neighborRight);
+            forwarder.sendSnapshotMarker(leftNeighbor);
+            forwarder.sendSnapshotMarker(rightNeighbor);
         } else {
             if (recordingMode == RecordingModeValues.BOTH) {
-                if (socketAddress.equals(neighborLeft)) {
+                if (socketAddress.equals(leftNeighbor)) {
                     recordingMode = RecordingModeValues.RIGHT;
-                } else if (socketAddress.equals(neighborRight)) {
+                } else if (socketAddress.equals(rightNeighbor)) {
                     recordingMode = RecordingModeValues.LEFT;
                 }
-            } else if ((recordingMode == RecordingModeValues.LEFT && socketAddress.equals(neighborLeft)) ||
-                    (recordingMode == RecordingModeValues.RIGHT && socketAddress.equals(neighborRight))) {
+            } else if ((recordingMode == RecordingModeValues.LEFT && socketAddress.equals(leftNeighbor)) ||
+                    (recordingMode == RecordingModeValues.RIGHT && socketAddress.equals(rightNeighbor))) {
                 recordingMode = RecordingModeValues.IDLE;
                 snapshot = sumFishies + recievingFishies;
                 if (initiator) {
-                    forwarder.sendSnapshotCollector(neighborLeft, new SnapshotCollector());
+                    forwarder.sendSnapshotCollector(leftNeighbor, new SnapshotCollector());
                 }
             }
         }
@@ -246,8 +252,23 @@ public class TankModel extends Observable implements Iterable<FishModel> {
             capture = Boolean.TRUE;
             initiator = Boolean.FALSE;
         } else {
-            forwarder.sendSnapshotCollector(neighborLeft, collector);
+            forwarder.sendSnapshotCollector(leftNeighbor, collector);
         }
     }
-}
 
+    public void locateFishGlobally(String fishId) {
+        for (var entryPair : referenceFishies.entrySet()) {
+            FishModel fish = entryPair.getKey();
+            ReferenceStates reference = entryPair.getValue();
+            if (fish.getId().equals(fishId)) {
+                if (fishies.contains(fish) && reference == ReferenceStates.HERE) {
+                    fish.toggle();
+                } else {
+                    forwarder.sendLocationRequest(reference == ReferenceStates.RIGHT ? rightNeighbor : leftNeighbor, fishId);
+                }
+                break;
+            }
+        }
+    }
+
+}
