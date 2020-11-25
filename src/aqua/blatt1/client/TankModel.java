@@ -271,4 +271,8 @@ public class TankModel extends Observable implements Iterable<FishModel> {
         }
     }
 
+    public void receiveNameRequest(InetSocketAddress requestedTank, String requestId) {
+
+    }
+
 }

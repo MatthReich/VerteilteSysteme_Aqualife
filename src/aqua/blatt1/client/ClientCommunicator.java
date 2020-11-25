@@ -56,6 +56,12 @@ public class ClientCommunicator {
             endpoint.send(neighbor, new LocationRequest(fishId));
         }
 
+        public void sendNameResolutionRequest() {
+        }
+
+        public void sendNameResolutionResponse() {
+        }
+
     }
 
     public class ClientReceiver extends Thread {
@@ -97,6 +103,10 @@ public class ClientCommunicator {
 
                 if (msg.getPayload() instanceof  LocationRequest) {
                     tankModel.locateFishGlobally((((LocationRequest) msg.getPayload()).fishId));
+                }
+
+                if (msg.getPayload() instanceof NameResolutionRequest) {
+                    tankModel.receiveNameRequest(((NameResolutionRequest) msg.getPayload()).requestedTank, ((NameResolutionRequest) msg.getPayload()).requestId);
                 }
 
             }
