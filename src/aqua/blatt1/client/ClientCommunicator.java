@@ -56,10 +56,12 @@ public class ClientCommunicator {
             endpoint.send(neighbor, new LocationRequest(fishId));
         }
 
-        public void sendNameResolutionRequest() {
+        public void sendNameResolutionRequest(String tankId, String fishId) {
+            endpoint.send(broker, new NameResolutionRequest(tankId, fishId));
         }
 
-        public void sendNameResolutionResponse() {
+        public void sendLocationUpdate() {
+
         }
 
     }
@@ -105,8 +107,8 @@ public class ClientCommunicator {
                     tankModel.locateFishGlobally((((LocationRequest) msg.getPayload()).fishId));
                 }
 
-                if (msg.getPayload() instanceof NameResolutionRequest) {
-                    tankModel.receiveNameRequest(((NameResolutionRequest) msg.getPayload()).requestedTank, ((NameResolutionRequest) msg.getPayload()).requestId);
+                if (msg.getPayload() instanceof NameResolutionResponse) {
+                    tankModel.receiveNameResolutionResponse(((NameResolutionRequest) msg.getPayload()).requestedTank, ((NameResolutionRequest) msg.getPayload()).requestId);
                 }
 
             }

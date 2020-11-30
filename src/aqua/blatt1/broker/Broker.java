@@ -1,5 +1,6 @@
 package aqua.blatt1.broker;
 
+import aqua.blatt1.client.TankModel;
 import aqua.blatt1.common.Direction;
 import aqua.blatt1.common.Properties;
 import aqua.blatt1.common.msgtypes.*;
@@ -61,6 +62,10 @@ public class Broker {
                             lock.readLock().lock();
                             handoffFish(((HandoffRequest) message.getPayload()), message.getSender());
                             lock.readLock().unlock();
+                        } else if (message.getPayload() instanceof NameResolutionRequest) {
+                            lock.writeLock().lock();
+                            resolutionRequest(((NameResolutionRequest) message.getPayload()).requestedTank, ((NameResolutionRequest) message.getPayload()).requestId);
+                            lock.writeLock().unlock();
                         }
                     }
                 });
@@ -106,6 +111,10 @@ public class Broker {
             neighbor = clientList.getRightNeighorOf(clientList.indexOf(clientAddress));
         }
         endpoint.send(neighbor, handoffRequest);
+    }
+
+    private void resolutionRequest(String requestedTank, String requestId) {
+        endpoint.send(null, new NameResolutionResponse(null, requestId));
     }
 
 }

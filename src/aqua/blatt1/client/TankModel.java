@@ -31,7 +31,7 @@ public class TankModel extends Observable implements Iterable<FishModel> {
     private boolean initiator = Boolean.FALSE;
     private int sumFishies = 0;
     private int recievingFishies = 0;
-    private Map<FishModel, ReferenceStates> referenceFishies;
+    private Map<FishModel, ReferenceStates> homeAgent;
 
     private int snapshot = 0;
 
@@ -57,7 +57,7 @@ public class TankModel extends Observable implements Iterable<FishModel> {
     public TankModel(ClientCommunicator.ClientForwarder forwarder) {
         this.fishies = Collections.newSetFromMap(new ConcurrentHashMap<FishModel, Boolean>());
         this.forwarder = forwarder;
-        this.referenceFishies = new HashMap<>();
+        this.homeAgent = new HashMap<>();
     }
 
     synchronized void onRegistration(String id) {
@@ -74,14 +74,18 @@ public class TankModel extends Observable implements Iterable<FishModel> {
                     rand.nextBoolean() ? Direction.LEFT : Direction.RIGHT);
 
             fishies.add(fish);
-            referenceFishies.put(fish, ReferenceStates.HERE);
+            homeAgent.put(fish, null);
         }
     }
 
     synchronized void receiveFish(FishModel fish) {
         fish.setToStart();
         fishies.add(fish);
-        referenceFishies.put(fish, ReferenceStates.HERE);
+        if (homeAgent.containsKey(fish)) {
+            homeAgent.put(fish, null);
+        } else {
+            forwarder.sendNameResolutionRequest(fish.getTankId(), fish.getId());
+        }
 
         switch (recordingMode) {
             case IDLE:
@@ -142,7 +146,6 @@ public class TankModel extends Observable implements Iterable<FishModel> {
                             break;
                     }
                     forwarder.handOff(fish, this);
-                    referenceFishies.put(fish, fish.getDirection() == Direction.LEFT ? ReferenceStates.LEFT : ReferenceStates.RIGHT);
                 }
             }
 
@@ -257,22 +260,23 @@ public class TankModel extends Observable implements Iterable<FishModel> {
     }
 
     public void locateFishGlobally(String fishId) {
-        for (var entryPair : referenceFishies.entrySet()) {
+        for (var entryPair : homeAgent.entrySet()) {
             FishModel fish = entryPair.getKey();
             ReferenceStates reference = entryPair.getValue();
             if (fish.getId().equals(fishId)) {
-                if (fishies.contains(fish) && reference == ReferenceStates.HERE) {
+                if (fishies.contains(fish) && reference == null) {
                     fish.toggle();
-                } else {
-                    forwarder.sendLocationRequest(reference == ReferenceStates.RIGHT ? rightNeighbor : leftNeighbor, fishId);
                 }
                 break;
             }
         }
     }
 
-    public void receiveNameRequest(InetSocketAddress requestedTank, String requestId) {
-
+    public void receiveNameResolutionResponse(String requestedTank, String requestId) {
+        forwarder.sendLocationUpdate();
     }
 
+    public void receiveLocationRequest(String requestId) {
+
+    }
 }
