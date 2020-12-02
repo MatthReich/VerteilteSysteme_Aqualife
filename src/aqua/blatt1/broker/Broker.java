@@ -10,6 +10,9 @@ import messaging.Message;
 
 import javax.swing.*;
 import java.net.InetSocketAddress;
+import java.sql.Timestamp;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -20,6 +23,9 @@ public class Broker {
     private final Endpoint endpoint;
     private final ClientCollection<InetSocketAddress> clientList;
     boolean isRunning;
+    private final java.util.Timer timer = new Timer();
+    private final int DEFAULT_LEASE = 10000;
+
 
     public Broker() {
         endpoint = new Endpoint(PORT);
@@ -32,14 +38,26 @@ public class Broker {
     }
 
     public void broker() {
-        // pool size dynamisch berechnen
         ExecutorService executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
         isRunning = true;
-        /*executorService.execute(() -> {
-            JOptionPane.showMessageDialog(null, "Press ->OK<- when you want to stop");
-            isRunning = false;
-        });
+        /*
+            executorService.execute(() -> {
+                JOptionPane.showMessageDialog(null, "Press ->OK<- when you want to stop");
+                isRunning = false;
+            });
         */
+        timer.schedule(new TimerTask() {
+            @Override
+            public void run() {
+                for (int i = 0; i < clientList.size(); i++) {
+                    Timestamp registered = clientList.getTimeStamp(i);
+                    InetSocketAddress client = clientList.getClient(i);
+                    if (System.currentTimeMillis() - DEFAULT_LEASE > registered.getTime()) {
+                        deregister(client);
+                    }
+                }
+            }
+        }, 0, 5000);
         while (isRunning) {
             Message message = endpoint.blockingReceive();
             if (message.getPayload() instanceof PoisonPill) {
@@ -75,8 +93,23 @@ public class Broker {
     }
 
     private void register(InetSocketAddress clientAddress) {
+        if (clientList.indexOf(clientAddress) < 0) {
+            registerNew(clientAddress);
+        } else {
+            registerUpdate(clientAddress);
+        }
+    }
+
+    private void registerUpdate(InetSocketAddress clientAddress) {
+        int tankIndex = clientList.indexOf(clientAddress);
+
+        clientList.update(tankIndex, new Timestamp(System.currentTimeMillis()));
+        endpoint.send(clientAddress, new RegisterResponse(clientList.getID(tankIndex)));
+    }
+
+    private void registerNew(InetSocketAddress clientAddress) {
         final String id = "tank" + clientList.size();
-        clientList.add(id, clientAddress);
+        clientList.add(id, clientAddress, new Timestamp(System.currentTimeMillis()));
 
         InetSocketAddress neighborL = clientList.getLeftNeighorOf(clientList.indexOf(clientAddress));
         InetSocketAddress neighborR = clientList.getRightNeighorOf(clientList.indexOf(clientAddress));
@@ -115,10 +148,14 @@ public class Broker {
 
     private void resolutionRequest(NameResolutionRequest nameResolutionRequest, InetSocketAddress sender) {
         int tankIndex = clientList.indexOf(nameResolutionRequest.requestedTank);
-        InetSocketAddress tankAddress = clientList.getClient(tankIndex);
+        if (isPresent(tankIndex)) {
+            InetSocketAddress tankAddress = clientList.getClient(tankIndex);
+            endpoint.send(sender, new NameResolutionResponse(tankAddress, nameResolutionRequest.requestId));
+        }
+    }
 
-        System.out.println(tankIndex);
-        endpoint.send(sender, new NameResolutionResponse(tankAddress, nameResolutionRequest.requestId));
+    private boolean isPresent(int tankIndex) {
+        return tankIndex > 0;
     }
 
 }

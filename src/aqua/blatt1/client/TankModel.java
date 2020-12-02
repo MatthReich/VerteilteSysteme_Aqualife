@@ -30,6 +30,7 @@ public class TankModel extends Observable implements Iterable<FishModel> {
     private int sumFishies = 0;
     private int recievingFishies = 0;
     private Map<String, InetSocketAddress> homeAgent;
+    private boolean firstRegister = Boolean.TRUE;
 
     private int snapshot = 0;
 
@@ -58,9 +59,18 @@ public class TankModel extends Observable implements Iterable<FishModel> {
         this.homeAgent = new HashMap<>();
     }
 
-    synchronized void onRegistration(String id) {
+    synchronized void onRegistration(String id, int lease) {
         this.id = id;
-        newFish(WIDTH - FishModel.getXSize(), rand.nextInt(HEIGHT - FishModel.getYSize()));
+        if (firstRegister) {
+            newFish(WIDTH - FishModel.getXSize(), rand.nextInt(HEIGHT - FishModel.getYSize()));
+            firstRegister = Boolean.FALSE;
+        }
+        timer.schedule(new TimerTask() {
+            @Override
+            public void run() {
+                forwarder.register();
+            }
+        }, lease);
     }
 
     public synchronized void newFish(int x, int y) {
@@ -162,7 +172,7 @@ public class TankModel extends Observable implements Iterable<FishModel> {
         return hasToken;
     }
 
-    public synchronized void finish() {
+    public void finish() {
         forwarder.deregister(id);
     }
 
@@ -248,10 +258,7 @@ public class TankModel extends Observable implements Iterable<FishModel> {
     }
 
     public synchronized void locateFishLocally(String fishId) {
-        fishies.forEach(fishm->{
-            if(fishId.equals(fishm.getId()))
-                fishm.toggle();
-        });
+        fishies.stream().filter(fish -> fish.getId().equals(fishId)).forEach(FishModel::toggle);
     }
 
     public synchronized void receiveLocationUpdate(String fishId, InetSocketAddress location) {

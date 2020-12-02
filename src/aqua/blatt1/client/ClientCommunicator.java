@@ -83,7 +83,7 @@ public class ClientCommunicator {
                 }
 
                 if (msg.getPayload() instanceof RegisterResponse) {
-                    tankModel.onRegistration(((RegisterResponse) msg.getPayload()).getId());
+                    tankModel.onRegistration(((RegisterResponse) msg.getPayload()).getId(), ((RegisterResponse) msg.getPayload()).getLease());
                 }
 
                 if (msg.getPayload() instanceof HandoffRequest) {
