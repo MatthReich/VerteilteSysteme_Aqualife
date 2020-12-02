@@ -64,7 +64,7 @@ public class Broker {
                             lock.readLock().unlock();
                         } else if (message.getPayload() instanceof NameResolutionRequest) {
                             lock.writeLock().lock();
-                            resolutionRequest(((NameResolutionRequest) message.getPayload()).requestedTank, ((NameResolutionRequest) message.getPayload()).requestId);
+                            resolutionRequest((NameResolutionRequest) message.getPayload(), message.getSender());
                             lock.writeLock().unlock();
                         }
                     }
@@ -113,8 +113,12 @@ public class Broker {
         endpoint.send(neighbor, handoffRequest);
     }
 
-    private void resolutionRequest(String requestedTank, String requestId) {
-        endpoint.send(null, new NameResolutionResponse(null, requestId));
+    private void resolutionRequest(NameResolutionRequest nameResolutionRequest, InetSocketAddress sender) {
+        int tankIndex = clientList.indexOf(nameResolutionRequest.requestedTank);
+        InetSocketAddress tankAddress = clientList.getClient(tankIndex);
+
+        System.out.println(tankIndex);
+        endpoint.send(sender, new NameResolutionResponse(tankAddress, nameResolutionRequest.requestId));
     }
 
 }

@@ -11,8 +11,6 @@ import java.util.concurrent.TimeUnit;
 
 enum RecordingModeValues {IDLE, LEFT, RIGHT, BOTH}
 
-enum ReferenceStates {HERE, LEFT, RIGHT}
-
 public class TankModel extends Observable implements Iterable<FishModel> {
 
     public static final int WIDTH = 600;
@@ -31,7 +29,7 @@ public class TankModel extends Observable implements Iterable<FishModel> {
     private boolean initiator = Boolean.FALSE;
     private int sumFishies = 0;
     private int recievingFishies = 0;
-    private Map<FishModel, ReferenceStates> homeAgent;
+    private Map<String, InetSocketAddress> homeAgent;
 
     private int snapshot = 0;
 
@@ -74,35 +72,23 @@ public class TankModel extends Observable implements Iterable<FishModel> {
                     rand.nextBoolean() ? Direction.LEFT : Direction.RIGHT);
 
             fishies.add(fish);
-            homeAgent.put(fish, null);
+            homeAgent.put(fish.getId(), null);
         }
     }
 
     synchronized void receiveFish(FishModel fish) {
         fish.setToStart();
         fishies.add(fish);
-        if (homeAgent.containsKey(fish)) {
-            homeAgent.put(fish, null);
+        if (homeAgent.containsKey(fish.getId())) {
+            homeAgent.put(fish.getId(), null);
         } else {
             forwarder.sendNameResolutionRequest(fish.getTankId(), fish.getId());
         }
 
-        switch (recordingMode) {
-            case IDLE:
-                break;
-            case BOTH:
-                recievingFishies++;
-                break;
-            case LEFT:
-                if (fish.getDirection() == Direction.RIGHT) {
-                    recievingFishies++;
-                }
-                break;
-            case RIGHT:
-                if (fish.getDirection() == Direction.LEFT) {
-                    recievingFishies++;
-                }
-                break;
+        if ((recordingMode == RecordingModeValues.BOTH) ||
+                (fish.getDirection() == Direction.LEFT && recordingMode == RecordingModeValues.RIGHT) ||
+                (fish.getDirection() == Direction.RIGHT && recordingMode == RecordingModeValues.LEFT)) {
+            recievingFishies++;
         }
     }
 
@@ -128,22 +114,10 @@ public class TankModel extends Observable implements Iterable<FishModel> {
                 if (!hasToken()) {
                     fish.reverse();
                 } else {
-                    switch (recordingMode) {
-                        case IDLE:
-                            break;
-                        case BOTH:
-                            recievingFishies--;
-                            break;
-                        case LEFT:
-                            if (fish.getDirection() == Direction.LEFT) {
-                                recievingFishies--;
-                            }
-                            break;
-                        case RIGHT:
-                            if (fish.getDirection() == Direction.RIGHT) {
-                                recievingFishies--;
-                            }
-                            break;
+                    if ((recordingMode == RecordingModeValues.BOTH) ||
+                            (fish.getDirection() == Direction.LEFT && recordingMode == RecordingModeValues.LEFT) ||
+                            (fish.getDirection() == Direction.RIGHT && recordingMode == RecordingModeValues.RIGHT)) {
+                        recievingFishies--;
                     }
                     forwarder.handOff(fish, this);
                 }
@@ -173,7 +147,7 @@ public class TankModel extends Observable implements Iterable<FishModel> {
         }
     }
 
-    public void receiveToken() {
+    public synchronized void receiveToken() {
         hasToken = Boolean.TRUE;
         timer.schedule(new TimerTask() {
             @Override
@@ -184,7 +158,7 @@ public class TankModel extends Observable implements Iterable<FishModel> {
         }, 2000);
     }
 
-    public boolean hasToken() {
+    public synchronized boolean hasToken() {
         return hasToken;
     }
 
@@ -192,11 +166,11 @@ public class TankModel extends Observable implements Iterable<FishModel> {
         forwarder.deregister(id);
     }
 
-    public void receiveMarker(InetSocketAddress socketAddress) {
+    public synchronized void receiveMarker(InetSocketAddress socketAddress) {
         initiateSnapshot(socketAddress);
     }
 
-    public void initiateSnapshot(InetSocketAddress socketAddress) {
+    public synchronized void initiateSnapshot(InetSocketAddress socketAddress) {
         if (recordingMode == RecordingModeValues.IDLE) {
             if (socketAddress == null) {
                 initiator = Boolean.TRUE;
@@ -229,26 +203,26 @@ public class TankModel extends Observable implements Iterable<FishModel> {
         }
     }
 
-    private void localSnapshot() {
+    private  synchronized void localSnapshot() {
         this.forEach(fish -> {
             if (!fish.leavingTank())
                 sumFishies++;
         });
     }
 
-    public boolean isCapture() {
+    public synchronized boolean isCapture() {
         return capture;
     }
 
-    public void setCapture() {
+    public synchronized void setCapture() {
         this.capture = Boolean.FALSE;
     }
 
-    public int getSnapshot() {
+    public synchronized int getSnapshot() {
         return snapshot;
     }
 
-    public void receiveCollector(SnapshotCollector collector) {
+    public synchronized void receiveCollector(SnapshotCollector collector) {
         collector.totalFishies += snapshot;
         if (initiator) {
             snapshot = collector.totalFishies;
@@ -259,24 +233,28 @@ public class TankModel extends Observable implements Iterable<FishModel> {
         }
     }
 
-    public void locateFishGlobally(String fishId) {
-        for (var entryPair : homeAgent.entrySet()) {
-            FishModel fish = entryPair.getKey();
-            ReferenceStates reference = entryPair.getValue();
-            if (fish.getId().equals(fishId)) {
-                if (fishies.contains(fish) && reference == null) {
-                    fish.toggle();
-                }
-                break;
+    public synchronized void locateFishGlobally(String fishId) {
+        if (homeAgent.containsKey(fishId)) {
+            if (homeAgent.get(fishId) == null) {
+                locateFishLocally(fishId);
+            } else {
+                forwarder.sendLocationRequest(homeAgent.get(fishId), fishId);
             }
         }
     }
 
-    public void receiveNameResolutionResponse(String requestedTank, String requestId) {
-        forwarder.sendLocationUpdate();
+    public synchronized void receiveNameResolutionResponse(InetSocketAddress tankAddress, String requestId) {
+        forwarder.sendLocationUpdate(tankAddress, requestId);
     }
 
-    public void receiveLocationRequest(String requestId) {
+    public synchronized void locateFishLocally(String fishId) {
+        fishies.forEach(fishm->{
+            if(fishId.equals(fishm.getId()))
+                fishm.toggle();
+        });
+    }
 
+    public synchronized void receiveLocationUpdate(String fishId, InetSocketAddress location) {
+        homeAgent.put(fishId, location);
     }
 }

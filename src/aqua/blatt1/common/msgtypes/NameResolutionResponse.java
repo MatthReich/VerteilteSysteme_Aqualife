@@ -4,11 +4,11 @@ import java.io.Serializable;
 import java.net.InetSocketAddress;
 
 public class NameResolutionResponse implements Serializable {
-    public final String requestedTank;
+    public final InetSocketAddress requestedTank;
     public final String requestId;
 
-    public NameResolutionResponse(String tankId, String requestId) {
-        this.requestedTank = tankId;
+    public NameResolutionResponse(InetSocketAddress tankAddress, String requestId) {
+        this.requestedTank = tankAddress;
         this.requestId = requestId;
     }
 }
