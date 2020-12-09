@@ -1,6 +1,5 @@
 package aqua.blatt1.broker;
 
-import aqua.blatt1.client.TankModel;
 import aqua.blatt1.common.Direction;
 import aqua.blatt1.common.Properties;
 import aqua.blatt1.common.msgtypes.*;
@@ -8,7 +7,6 @@ import aqua.blatt2.broker.PoisonPill;
 import messaging.Endpoint;
 import messaging.Message;
 
-import javax.swing.*;
 import java.net.InetSocketAddress;
 import java.sql.Timestamp;
 import java.util.Timer;
@@ -49,6 +47,7 @@ public class Broker {
         timer.schedule(new TimerTask() {
             @Override
             public void run() {
+                // false implementation -> needs own iterator / cooperation with ClientCollection
                 for (int i = 0; i < clientList.size(); i++) {
                     Timestamp registered = clientList.getTimeStamp(i);
                     InetSocketAddress client = clientList.getClient(i);
@@ -57,7 +56,7 @@ public class Broker {
                     }
                 }
             }
-        }, 0, 5000);
+        }, 0, 500);
         while (isRunning) {
             Message message = endpoint.blockingReceive();
             if (message.getPayload() instanceof PoisonPill) {
