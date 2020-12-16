@@ -2,6 +2,7 @@ package aqua.blatt1.broker;
 
 import aqua.blatt1.common.Direction;
 import aqua.blatt1.common.Properties;
+import aqua.blatt1.common.SecureEndpoint;
 import aqua.blatt1.common.msgtypes.*;
 import aqua.blatt2.broker.PoisonPill;
 import messaging.Endpoint;
@@ -26,7 +27,7 @@ public class Broker {
 
 
     public Broker() {
-        endpoint = new Endpoint(PORT);
+        endpoint = new SecureEndpoint(PORT);
         clientList = new ClientCollection<>();
     }
 
