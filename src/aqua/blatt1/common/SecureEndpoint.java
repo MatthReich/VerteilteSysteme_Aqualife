@@ -9,19 +9,23 @@ import java.io.IOException;
 import java.io.Serializable;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
+import java.security.*;
+import java.util.HashMap;
+import java.util.Map;
 
 public class SecureEndpoint extends Endpoint {
-    private final static String ALGORITHM = "AES";
+    private final static String ALGORITHM = "RSA";
     private final static String STRING_KEY = "CAFEBABECAFEBABE";
-    private SecretKeySpec symKey;
+    private KeyPairGenerator symKey;
     private final Endpoint endpoint;
     private Cipher encrypt;
     private Cipher decrypt;
+    Map<InetSocketAddress, Key> keys;
+
 
     public SecureEndpoint() {
         endpoint = new Endpoint();
+        keys = new HashMap<>();
         initSecretKey();
         initEncryptCipher();
         initDecryptCipher();
@@ -68,9 +72,12 @@ public class SecureEndpoint extends Endpoint {
         return null;
     }
 
-    private SecretKeySpec initSecretKey() {
-        symKey = new SecretKeySpec(STRING_KEY.getBytes(StandardCharsets.UTF_8), ALGORITHM);
-        return symKey;
+    private void initSecretKey() throws NoSuchAlgorithmException {
+        try {
+            symKey = KeyPairGenerator.getInstance(ALGORITHM);
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        }
     }
 
     private void initEncryptCipher() {
